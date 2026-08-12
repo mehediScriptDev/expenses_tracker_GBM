@@ -35,8 +35,13 @@ export function nowTime() {
 }
 
 export function parseISO(date: string) {
-  const [y, m, d] = date.split("-").map(Number)
-  return new Date(y, (m || 1) - 1, d || 1)
+  if (!date) return new Date(NaN)
+
+  const normalized = date.includes("T") ? date.slice(0, 10) : date.slice(0, 10)
+  const [y, m, d] = normalized.split("-").map(Number)
+  if (!y || !m || !d) return new Date(NaN)
+
+  return new Date(y, m - 1, d)
 }
 
 export function formatDate(date: string, style: "short" | "long" | "medium" = "medium") {
@@ -66,6 +71,8 @@ export function formatTime(time: string) {
 
 export function relativeDay(date: string) {
   const target = parseISO(date)
+  if (Number.isNaN(target.getTime())) return "Unknown date"
+
   const today = new Date()
   today.setHours(0, 0, 0, 0)
   const diff = Math.round(
@@ -74,6 +81,7 @@ export function relativeDay(date: string) {
   if (diff === 0) return "Today"
   if (diff === -1) return "Yesterday"
   if (diff === 1) return "Tomorrow"
+  if (diff < -365) return formatDate(date.slice(0, 10), "short")
   if (diff < 0) return `${Math.abs(diff)} days ago`
   return `in ${diff} days`
 }

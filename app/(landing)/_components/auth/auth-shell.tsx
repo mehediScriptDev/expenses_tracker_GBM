@@ -24,6 +24,7 @@ export function AuthShell({ progress = 50, children, footer, onBack }: AuthShell
           width={200}
           height={56}
           className="h-12 sm:h-14 w-auto object-contain mx-auto"
+          style={{ width: "auto" }}
           priority
         />
       </Link>

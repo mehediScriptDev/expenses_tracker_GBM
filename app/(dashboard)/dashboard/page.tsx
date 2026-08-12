@@ -6,11 +6,13 @@ import { WarningsBanner } from "@/dashboard/dashboard/warnings-banner"
 import { CategoryBreakdown } from "@/dashboard/dashboard/category-breakdown"
 import { BorrowedSummary } from "@/dashboard/dashboard/borrowed-summary"
 import { RecentTransactions } from "@/dashboard/dashboard/recent-transactions"
+import { DashboardFetchError } from "@/dashboard/dashboard/dashboard-fetch-error"
 import { DashPage } from "@/dashboard/shared"
 
 export default function DashboardPage() {
   return (
     <DashPage>
+      <DashboardFetchError />
       <OverviewPanel />
 
       <div className="grid w-full min-w-0 gap-4 sm:gap-6 xl:grid-cols-12">

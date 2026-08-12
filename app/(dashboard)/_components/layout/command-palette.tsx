@@ -3,6 +3,7 @@
 import * as React from "react"
 import { useRouter } from "next/navigation"
 import { useStore } from "@/lib/store"
+import { useTransactionSearch } from "@/lib/hooks/use-transaction-search"
 import { formatMoney } from "@/lib/format"
 import { getCategory } from "@/lib/selectors"
 import { Icon } from "@/lib/icon"
@@ -19,8 +20,9 @@ export function CommandPalette({
   onOpenAdd: () => void
 }) {
   const router = useRouter()
-  const { data, loadDemo } = useStore()
+  const { data, transactionRevision } = useStore()
   const [query, setQuery] = React.useState("")
+  const { results: matchingTx, loading: searchingTx } = useTransactionSearch(query, transactionRevision)
 
   React.useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -58,31 +60,7 @@ export function CommandPalette({
         onOpenAdd()
       },
     },
-    {
-      id: "load-demo",
-      label: "Load Sample Demo Data",
-      icon: "sparkles",
-      perform: () => {
-        loadDemo()
-        onOpenChange(false)
-      },
-    },
   ]
-
-  const matchingTx = React.useMemo(() => {
-    if (!query.trim()) return []
-    const q = query.toLowerCase().trim()
-    return data.transactions
-      .filter((t) => {
-        const cat = getCategory(data, t.categoryId)
-        return (
-          t.description.toLowerCase().includes(q) ||
-          cat?.name.toLowerCase().includes(q) ||
-          t.merchant?.toLowerCase().includes(q)
-        )
-      })
-      .slice(0, 5)
-  }, [query, data])
 
   const matchingNav = React.useMemo(() => {
     if (!query.trim()) return navItems
@@ -159,7 +137,11 @@ export function CommandPalette({
             </div>
           )}
 
-          {query.trim() && matchingTx.length > 0 && (
+          {query.trim() && searchingTx && (
+            <div className="px-2 py-4 text-center text-muted-foreground">Searching transactions…</div>
+          )}
+
+          {query.trim() && !searchingTx && matchingTx.length > 0 && (
             <div className="space-y-1">
               <p className="px-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
                 Matching Transactions
@@ -199,7 +181,11 @@ export function CommandPalette({
             </div>
           )}
 
-          {query.trim() && matchingActions.length === 0 && matchingNav.length === 0 && matchingTx.length === 0 && (
+          {query.trim() &&
+            !searchingTx &&
+            matchingActions.length === 0 &&
+            matchingNav.length === 0 &&
+            matchingTx.length === 0 && (
             <div className="py-8 text-center text-muted-foreground">
               No matching commands or transactions found for &quot;{query}&quot;
             </div>

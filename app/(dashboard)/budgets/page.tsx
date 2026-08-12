@@ -19,12 +19,13 @@ import {
   dashSegmentItemActive,
 } from "@/dashboard/shared"
 import { useStore } from "@/lib/store"
-import { computeBudgetUsage } from "@/lib/selectors"
+import { useBudgetList } from "@/lib/hooks/use-budget-list"
 import { formatMoney } from "@/lib/format"
 import { Icon } from "@/lib/icon"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
+import { toast } from "sonner"
 import {
   Dialog,
   DialogContent,
@@ -35,10 +36,13 @@ import {
 } from "@/components/ui/dialog"
 
 export default function BudgetsPage() {
-  const { data, setBudget, removeBudget } = useStore()
+  const { data, setBudget, removeBudget, transactionRevision } = useStore()
+  const { budgetUsages, loading, error, reload } = useBudgetList(transactionRevision)
   const [editingCatId, setEditingCatId] = React.useState<string | null>(null)
   const [budgetInput, setBudgetInput] = React.useState<string>("")
   const [isAddOpen, setIsAddOpen] = React.useState(false)
+  const [addCategoryId, setAddCategoryId] = React.useState("")
+  const [addBudgetInput, setAddBudgetInput] = React.useState("")
 
   const [search, setSearch] = React.useState("")
   const [statusFilter, setStatusFilter] = React.useState<"all" | "on-track" | "warning" | "over">("all")
@@ -49,8 +53,6 @@ export default function BudgetsPage() {
   React.useEffect(() => {
     setCurrentPage(1)
   }, [search, statusFilter])
-
-  const budgetUsages = React.useMemo(() => computeBudgetUsage(data), [data])
 
   const filteredUsages = React.useMemo(() => {
     return budgetUsages.filter((u) => {
@@ -96,14 +98,31 @@ export default function BudgetsPage() {
     return data.categories.filter((c) => c.kind === "expense" && !budgetedIds.has(c.id))
   }, [data.categories, data.budgets])
 
-  const handleSaveBudget = (catId: string) => {
+  const handleSaveBudget = async (catId: string) => {
     const val = parseFloat(budgetInput)
-    if (!isNaN(val) && val >= 0) {
-      if (val === 0) removeBudget(catId)
-      else setBudget(catId, val)
+    if (isNaN(val) || val < 0) return
+
+    try {
+      if (val === 0) await removeBudget(catId)
+      else await setBudget(catId, val)
+      reload()
+      toast.success("Budget saved")
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not save budget.")
+    } finally {
+      setEditingCatId(null)
+      setBudgetInput("")
     }
-    setEditingCatId(null)
-    setBudgetInput("")
+  }
+
+  const handleRemoveBudget = async (catId: string) => {
+    try {
+      await removeBudget(catId)
+      reload()
+      toast.success("Budget removed")
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not remove budget.")
+    }
   }
 
   const stats = [
@@ -148,6 +167,12 @@ export default function BudgetsPage() {
   return (
     <DashPage>
       <PageHeader title="Budgets" description="Set monthly limits and track spending against each category." />
+
+      {error ? (
+        <div className="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900 dark:border-rose-900/50 dark:bg-rose-950/40 dark:text-rose-100">
+          Could not load budgets from server: {error}
+        </div>
+      ) : null}
 
       <section className="rounded-xl bg-white dark:bg-card p-5 sm:p-7 border border-neutral-200/60 dark:border-neutral-800 shadow-2xs space-y-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -203,7 +228,9 @@ export default function BudgetsPage() {
         </div>
       </section>
 
-      {budgetUsages.length === 0 ? (
+      {loading ? (
+        <div className="py-16 text-center text-sm text-neutral-500">Loading budgets from server…</div>
+      ) : budgetUsages.length === 0 ? (
         <EmptyState
           icon="target"
           title="No budgets yet"
@@ -283,7 +310,7 @@ export default function BudgetsPage() {
                               </button>
                               <button
                                 type="button"
-                                onClick={() => removeBudget(u.category.id)}
+                                onClick={() => void handleRemoveBudget(u.category.id)}
                                 aria-label={`Remove ${u.category.name} budget`}
                                 className="flex size-8 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-900/60 bg-rose-50/60 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 hover:bg-rose-600 hover:text-white hover:border-rose-600 transition-all cursor-pointer shadow-2xs"
                               >
@@ -309,7 +336,7 @@ export default function BudgetsPage() {
                             className={cn("h-11 min-w-0 flex-1 text-sm", dashInput)}
                             autoFocus
                           />
-                          <Button variant="dash" size="sm" className="h-11 px-4" onClick={() => handleSaveBudget(u.category.id)}>
+                          <Button variant="dash" size="sm" className="h-11 px-4" onClick={() => void handleSaveBudget(u.category.id)}>
                             Save
                           </Button>
                           <Button size="sm" variant="ghost" className="h-11 px-3" onClick={() => setEditingCatId(null)}>
@@ -464,7 +491,7 @@ export default function BudgetsPage() {
                                     size="xs"
                                     variant="dash"
                                     className="h-8 px-2.5 text-[10px] font-extrabold uppercase tracking-wider bg-neutral-900 text-white hover:!bg-[#FFC700] hover:!text-black"
-                                    onClick={() => handleSaveBudget(u.category.id)}
+                                    onClick={() => void handleSaveBudget(u.category.id)}
                                   >
                                     Save
                                   </Button>
@@ -496,7 +523,7 @@ export default function BudgetsPage() {
                                   {/* Remove Button */}
                                   <button
                                     type="button"
-                                    onClick={() => removeBudget(u.category.id)}
+                                    onClick={() => void handleRemoveBudget(u.category.id)}
                                     className="flex size-8 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-900/60 bg-rose-50/60 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 hover:bg-rose-600 hover:text-white hover:border-rose-600 transition-all cursor-pointer shadow-2xs"
                                     title="Remove budget"
                                     aria-label={`Remove ${u.category.name} budget`}
@@ -528,29 +555,49 @@ export default function BudgetsPage() {
         </div>
       )}
 
-      <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
+      <Dialog
+        open={isAddOpen}
+        onOpenChange={(open) => {
+          setIsAddOpen(open)
+          if (open && unbudgetedCategories.length > 0) {
+            setAddCategoryId(unbudgetedCategories[0].id)
+            setAddBudgetInput("")
+          }
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Set category budget</DialogTitle>
-            <DialogDescription>Choose a category to set a budget. You can customize the spending limit on its card.</DialogDescription>
+            <DialogDescription>Choose a category and set its monthly spending limit.</DialogDescription>
           </DialogHeader>
 
           <form
             onSubmit={(e) => {
               e.preventDefault()
-              const target = e.currentTarget
-              const catId = (target.elements.namedItem("catId") as HTMLSelectElement).value
-              if (catId) {
-                setBudget(catId, 0)
-                setIsAddOpen(false)
-              }
+              void (async () => {
+                const val = parseFloat(addBudgetInput)
+                if (!addCategoryId || isNaN(val) || val <= 0) {
+                  toast.error("Enter a valid monthly limit.")
+                  return
+                }
+
+                try {
+                  await setBudget(addCategoryId, val)
+                  reload()
+                  toast.success("Budget saved")
+                  setIsAddOpen(false)
+                } catch (error) {
+                  toast.error(error instanceof Error ? error.message : "Could not save budget.")
+                }
+              })()
             }}
             className="space-y-4 py-2"
           >
             <div className="space-y-1.5">
               <label className="dash-label">Category</label>
               <select
-                name="catId"
+                value={addCategoryId}
+                onChange={(e) => setAddCategoryId(e.target.value)}
                 className="dash-input w-full px-3 text-sm"
               >
                 {unbudgetedCategories.map((c) => (
@@ -559,6 +606,20 @@ export default function BudgetsPage() {
                   </option>
                 ))}
               </select>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="dash-label">Monthly limit ({data.settings.currencySymbol})</label>
+              <Input
+                type="number"
+                step="any"
+                min="1"
+                value={addBudgetInput}
+                onChange={(e) => setAddBudgetInput(e.target.value)}
+                placeholder="e.g. 5000"
+                className={dashInput}
+                required
+              />
             </div>
 
             <DialogFooter className="pt-2">

@@ -1,25 +1,37 @@
 "use client"
 
+import * as React from "react"
 import Link from "next/link"
-import { useStore } from "@/lib/store"
-import { computeDashboard } from "@/lib/selectors"
+import { useDashboardData } from "@/lib/hooks/dashboard-context"
 import { formatMoney } from "@/lib/format"
-import { ProgressBar, dashLabel, dashCaption, dashHeroValue, dashStatValue, dashMeta } from "@/dashboard/shared"
+import { ProgressBar } from "@/dashboard/shared"
 import { useUI } from "@/dashboard/layout/app-shell"
 import { Button } from "@/components/ui/button"
 import { Icon } from "@/lib/icon"
 import { cn } from "@/lib/utils"
 
 export function OverviewPanel() {
-  const { data } = useStore()
   const ui = useUI()
-  const m = computeDashboard(data)
-  const cyclePct = m.cycleBudget > 0 ? (m.cycleSpending / m.cycleBudget) * 100 : 0
+  const { dashboard, loading } = useDashboardData()
+
+  const currencySymbol = dashboard?.currency_symbol ?? "৳"
+  const available = dashboard?.available ?? 0
+  const cycleSpending = dashboard?.cycle_expenses ?? 0
+  const cycleBudget = dashboard?.benchmark_salary ?? 0
+  const safeDailyLimit = dashboard?.safe_daily_limit ?? 0
+  const daysRemaining = dashboard?.cycle.days_remaining ?? 0
+
+  const cyclePct =
+    cycleBudget > 0
+      ? (cycleSpending / cycleBudget) * 100
+      : cycleSpending > 0
+        ? 100
+        : 0
 
   const stats = [
     {
-      label: "Today",
-      value: formatMoney(m.todaySpending, { symbol: data.settings.currencySymbol }),
+      label: "Spent today",
+      value: formatMoney(dashboard?.today_spending ?? 0, { symbol: currencySymbol }),
       icon: "sun",
       cardBg: "bg-[#FFF8D6] dark:bg-[#332A00]",
       textColor: "text-[#5C4500] dark:text-[#FFE999]",
@@ -27,8 +39,8 @@ export function OverviewPanel() {
       labelColor: "text-[#7A5C00] dark:text-[#FFDF80]",
     },
     {
-      label: "This week",
-      value: formatMoney(m.weekSpending, { symbol: data.settings.currencySymbol }),
+      label: "Spent this week",
+      value: formatMoney(dashboard?.week_spending ?? 0, { symbol: currencySymbol }),
       icon: "calendar-days",
       cardBg: "bg-[#FDF0E9] dark:bg-[#381B0E]",
       textColor: "text-[#6E2E10] dark:text-[#FCD5C5]",
@@ -36,8 +48,8 @@ export function OverviewPanel() {
       labelColor: "text-[#8C3D18] dark:text-[#FBBFA8]",
     },
     {
-      label: "This month",
-      value: formatMoney(m.monthSpending, { symbol: data.settings.currencySymbol }),
+      label: "Spent this month",
+      value: formatMoney(dashboard?.month_spending ?? 0, { symbol: currencySymbol }),
       icon: "calendar-range",
       cardBg: "bg-[#EBF7EE] dark:bg-[#0B2E17]",
       textColor: "text-[#134D25] dark:text-[#C1F0CC]",
@@ -46,7 +58,7 @@ export function OverviewPanel() {
     },
     {
       label: "Borrowed",
-      value: formatMoney(m.borrowedOutstanding, { symbol: data.settings.currencySymbol }),
+      value: formatMoney(dashboard?.borrowed_outstanding ?? 0, { symbol: currencySymbol }),
       icon: "hand-coins",
       cardBg: "bg-[#EEF4FF] dark:bg-[#102347]",
       textColor: "text-[#163870] dark:text-[#C7DBFF]",
@@ -64,7 +76,7 @@ export function OverviewPanel() {
               Available balance
             </p>
             <p className="mt-1.5 font-mono text-3xl font-black tabular-nums tracking-tight text-neutral-900 dark:text-neutral-50 sm:text-4xl lg:text-5xl">
-              {formatMoney(m.currentBalance, { symbol: data.settings.currencySymbol })}
+              {loading && !dashboard ? "…" : formatMoney(available, { symbol: currencySymbol })}
             </p>
           </div>
 
@@ -73,7 +85,9 @@ export function OverviewPanel() {
               <span className="text-xs font-extrabold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
                 Salary cycle spending
               </span>
-              <span className="text-sm font-extrabold tabular-nums text-neutral-900 dark:text-neutral-100">{Math.round(cyclePct)}% used</span>
+              <span className="text-sm font-extrabold tabular-nums text-neutral-900 dark:text-neutral-100">
+                {Math.round(cyclePct)}% used
+              </span>
             </div>
             <ProgressBar
               value={cyclePct}
@@ -81,11 +95,23 @@ export function OverviewPanel() {
               className="h-3"
             />
             <p className="text-xs font-medium text-neutral-600 dark:text-neutral-400">
-              Safe to spend{" "}
-              <strong className="font-extrabold text-neutral-900 dark:text-neutral-100 bg-[#FFC700]/25 dark:bg-[#FFC700]/30 px-2 py-0.5 rounded-md">
-                {formatMoney(m.safeDailyLimit, { symbol: data.settings.currencySymbol })}/day
-              </strong>{" "}
-              · {m.daysRemaining} days left in cycle
+              {cycleBudget <= 0 && cycleSpending > 0 ? (
+                <>
+                  Spent{" "}
+                  <strong className="font-extrabold text-neutral-900 dark:text-neutral-100">
+                    {formatMoney(cycleSpending, { symbol: currencySymbol })}
+                  </strong>{" "}
+                  this cycle · set salary in Settings to track budget usage
+                </>
+              ) : (
+                <>
+                  Safe to spend{" "}
+                  <strong className="font-extrabold text-neutral-900 dark:text-neutral-100 bg-[#FFC700]/25 dark:bg-[#FFC700]/30 px-2 py-0.5 rounded-md">
+                    {formatMoney(safeDailyLimit, { symbol: currencySymbol })}/day
+                  </strong>{" "}
+                  · {daysRemaining} days left in cycle
+                </>
+              )}
             </p>
           </div>
         </div>

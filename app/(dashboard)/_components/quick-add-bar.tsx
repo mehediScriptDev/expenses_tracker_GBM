@@ -23,7 +23,7 @@ export function QuickAddBar() {
 
     const tokens = text.trim().split(/\s+/)
     let amount = 0
-    let categoryId = "other"
+    let categoryId = data.categories.find((c) => c.name.toLowerCase() === "other")?.id ?? data.categories[0]?.id ?? ""
     let paymentMethod: PaymentMethod = "cash"
     let type: "expense" | "income" = "expense"
     const descWords: string[] = []
@@ -73,48 +73,54 @@ export function QuickAddBar() {
     return { amount, description, categoryId, paymentMethod, type }
   }, [text, data.categories])
 
-  const handleQuickAddPreset = (preset: QuickAddPreset) => {
-    const tx = addTransaction({
-      type: "expense",
-      amount: preset.amount,
-      categoryId: preset.categoryId,
-      description: preset.label,
-      date: todayISO(),
-      time: nowTime(),
-      paymentMethod: preset.paymentMethod,
-      tags: ["quick-add"],
-      recurring: false,
-    })
+  const handleQuickAddPreset = async (preset: QuickAddPreset) => {
+    try {
+      const tx = await addTransaction({
+        type: "expense",
+        amount: preset.amount,
+        categoryId: preset.categoryId,
+        description: preset.label,
+        date: todayISO(),
+        time: nowTime(),
+        paymentMethod: preset.paymentMethod,
+        recurring: false,
+      })
 
-    toast.success(`Added ${preset.label} (${formatMoney(preset.amount, { symbol: data.settings.currencySymbol })})`, {
-      action: { label: "Undo", onClick: () => deleteTransaction(tx.id) },
-    })
+      toast.success(`Added ${preset.label} (${formatMoney(preset.amount, { symbol: data.settings.currencySymbol })})`, {
+        action: { label: "Undo", onClick: () => void deleteTransaction(tx.id) },
+      })
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not add transaction.")
+    }
   }
 
-  const handleSmartSubmit = (e: React.FormEvent) => {
+  const handleSmartSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!parsed || parsed.amount <= 0) {
       toast.error("Please enter a valid amount (e.g. 'Coffee 150')")
       return
     }
 
-    const tx = addTransaction({
-      type: parsed.type,
-      amount: parsed.amount,
-      categoryId: parsed.categoryId,
-      description: parsed.description,
-      date: todayISO(),
-      time: nowTime(),
-      paymentMethod: parsed.paymentMethod,
-      tags: ["smart-add"],
-      recurring: false,
-    })
+    try {
+      const tx = await addTransaction({
+        type: parsed.type,
+        amount: parsed.amount,
+        categoryId: parsed.categoryId,
+        description: parsed.description,
+        date: todayISO(),
+        time: nowTime(),
+        paymentMethod: parsed.paymentMethod,
+        recurring: false,
+      })
 
-    setText("")
-    toast.success(
-      `Added ${parsed.description} (${formatMoney(parsed.amount, { symbol: data.settings.currencySymbol })})`,
-      { action: { label: "Undo", onClick: () => deleteTransaction(tx.id) } },
-    )
+      setText("")
+      toast.success(
+        `Added ${parsed.description} (${formatMoney(parsed.amount, { symbol: data.settings.currencySymbol })})`,
+        { action: { label: "Undo", onClick: () => void deleteTransaction(tx.id) } },
+      )
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not add transaction.")
+    }
   }
 
   return (

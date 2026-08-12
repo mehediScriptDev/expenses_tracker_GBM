@@ -17,6 +17,7 @@ import {
   ProgressBar,
 } from "@/dashboard/shared"
 import { useStore } from "@/lib/store"
+import { useCategoryStats } from "@/lib/hooks/use-category-stats"
 import { formatMoney } from "@/lib/format"
 import { Icon } from "@/lib/icon"
 import { CATEGORY_COLOR_CHOICES, CATEGORY_ICON_CHOICES } from "@/lib/constants"
@@ -32,6 +33,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog"
 import { cn } from "@/lib/utils"
+import { toast } from "sonner"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -43,7 +45,8 @@ import {
 type CategoryFilter = "expense" | "income" | "overbudget" | "undertarget" | "all"
 
 export default function CategoriesPage() {
-  const { data, addCategory, updateCategory, deleteCategory, setBudget, removeBudget } = useStore()
+  const { data, addCategory, updateCategory, deleteCategory, setBudget, removeBudget, transactionRevision } = useStore()
+  const { categoryStats } = useCategoryStats(transactionRevision)
 
   const [filter, setFilter] = React.useState<CategoryFilter>("expense")
   const [search, setSearch] = React.useState("")
@@ -57,16 +60,6 @@ export default function CategoriesPage() {
   React.useEffect(() => {
     setCurrentPage(1)
   }, [search, filter])
-
-  const categoryStats = React.useMemo(() => {
-    const stats: Record<string, { total: number; count: number }> = {}
-    for (const tx of data.transactions) {
-      if (!stats[tx.categoryId]) stats[tx.categoryId] = { total: 0, count: 0 }
-      stats[tx.categoryId].total += tx.amount
-      stats[tx.categoryId].count += 1
-    }
-    return stats
-  }, [data.transactions])
 
   const filteredCategories = React.useMemo(() => {
     return data.categories.filter((cat) => {
@@ -143,6 +136,43 @@ export default function CategoriesPage() {
   const handleOpenEdit = (cat: Category) => {
     setEditingCategory(cat)
     setDialogOpen(true)
+  }
+
+  const handleDelete = async (id: string) => {
+    try {
+      await deleteCategory(id)
+      toast.success("Category deleted")
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not delete category.")
+    }
+  }
+
+  const handleSaveCategory = async (
+    catData: Omit<Category, "id" | "isCustom">,
+    budgetLimit?: number,
+  ) => {
+    try {
+      let catId = editingCategory?.id
+      if (editingCategory) {
+        await updateCategory(editingCategory.id, catData)
+      } else {
+        const newCat = await addCategory(catData)
+        catId = newCat.id
+      }
+
+      if (catId) {
+        if (budgetLimit && budgetLimit > 0) {
+          await setBudget(catId, budgetLimit)
+        } else {
+          await removeBudget(catId)
+        }
+      }
+
+      toast.success(editingCategory ? "Category updated" : "Category created")
+      setDialogOpen(false)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not save category.")
+    }
   }
 
   const stats: {
@@ -370,7 +400,7 @@ export default function CategoriesPage() {
                       </button>
                       <button
                         type="button"
-                        onClick={() => deleteCategory(cat.id)}
+                        onClick={() => void handleDelete(cat.id)}
                         className="flex size-8 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-900/60 bg-rose-50/60 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 hover:bg-rose-600 hover:text-white transition-all cursor-pointer shadow-2xs"
                         title="Delete category"
                       >
@@ -515,7 +545,7 @@ export default function CategoriesPage() {
 
                             <button
                               type="button"
-                              onClick={() => deleteCategory(cat.id)}
+                              onClick={() => void handleDelete(cat.id)}
                               className="flex size-8 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-900/60 bg-rose-50/60 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 hover:bg-rose-600 hover:text-white hover:border-rose-600 transition-all cursor-pointer shadow-2xs"
                               title="Delete category"
                               aria-label={`Delete ${cat.name}`}
@@ -550,24 +580,7 @@ export default function CategoriesPage() {
         editingCategory={editingCategory}
         initialBudget={editingCategory ? data.budgets[editingCategory.id] : undefined}
         currencySymbol={data.settings.currencySymbol}
-        onSave={(catData, budgetLimit) => {
-          let catId = editingCategory?.id
-          if (editingCategory) {
-            updateCategory(editingCategory.id, catData)
-          } else {
-            const newCat = addCategory(catData)
-            catId = newCat.id
-          }
-
-          if (catId) {
-            if (budgetLimit && budgetLimit > 0) {
-              setBudget(catId, budgetLimit)
-            } else {
-              removeBudget(catId)
-            }
-          }
-          setDialogOpen(false)
-        }}
+        onSave={(catData, budgetLimit) => void handleSaveCategory(catData, budgetLimit)}
       />
     </DashPage>
   )

@@ -13,8 +13,9 @@ import {
   AuthShell,
   AuthTerms,
   AuthTitle,
-  GoogleAuthButton,
 } from "@/landing/auth/auth-shell"
+import { GoogleSignInButton } from "@/landing/auth/google-sign-in-button"
+import { isGoogleAuthConfigured } from "@/components/providers/google-auth-provider"
 
 export default function SignupPage() {
   const router = useRouter()
@@ -49,10 +50,6 @@ export default function SignupPage() {
     } finally {
       setSubmitting(false)
     }
-  }
-
-  const handleGoogle = () => {
-    toast.info("Google sign-in will be available soon.")
   }
 
   return (
@@ -105,11 +102,17 @@ export default function SignupPage() {
         </Button>
       </form>
 
-      <div className="mt-6 space-y-4">
-        <AuthDivider />
-        <GoogleAuthButton onClick={handleGoogle} />
-        <AuthTerms />
-      </div>
+      {isGoogleAuthConfigured() ? (
+        <div className="mt-6 space-y-4">
+          <AuthDivider />
+          <GoogleSignInButton />
+          <AuthTerms />
+        </div>
+      ) : (
+        <div className="mt-6">
+          <AuthTerms />
+        </div>
+      )}
     </AuthShell>
   )
 }

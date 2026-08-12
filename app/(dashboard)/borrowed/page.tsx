@@ -41,9 +41,10 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { cn } from "@/lib/utils"
+import { toast } from "sonner"
 
 export default function BorrowedPage() {
-  const { data, addLoan, updateLoan, deleteLoan } = useStore()
+  const { data, addLoan, updateLoan, repayLoan, deleteLoan } = useStore()
 
   const [directionTab, setDirectionTab] = React.useState<LoanDirection | "all">("all")
   const [statusFilter, setStatusFilter] = React.useState<"all" | "unpaid" | "overdue" | "paid">("all")
@@ -111,19 +112,40 @@ export default function BorrowedPage() {
     setRepayModalOpen(true)
   }
 
-  const handleSaveRepayment = (e: React.FormEvent) => {
+  const handleSaveRepayment = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!targetLoan) return
     const addAmt = parseFloat(repayAmount)
-    if (!isNaN(addAmt) && addAmt > 0) {
-      const nextRepaid = Math.min(targetLoan.amount, targetLoan.amountRepaid + addAmt)
-      updateLoan(targetLoan.id, { amountRepaid: nextRepaid })
+    if (isNaN(addAmt) || addAmt <= 0) {
+      toast.error("Enter a valid payment amount.")
+      return
     }
-    setRepayModalOpen(false)
+
+    try {
+      await repayLoan(targetLoan.id, addAmt)
+      toast.success("Payment recorded")
+      setRepayModalOpen(false)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not record payment.")
+    }
   }
 
-  const handleQuickSettle = (loan: Loan) => {
-    updateLoan(loan.id, { amountRepaid: loan.amount })
+  const handleQuickSettle = async (loan: Loan) => {
+    try {
+      await updateLoan(loan.id, { amountRepaid: loan.amount })
+      toast.success("Marked as settled")
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not settle loan.")
+    }
+  }
+
+  const handleDeleteLoan = async (id: string) => {
+    try {
+      await deleteLoan(id)
+      toast.success("Loan deleted")
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not delete loan.")
+    }
   }
 
   const stats = [
@@ -308,13 +330,13 @@ export default function BorrowedPage() {
                           Edit details
                         </DropdownMenuItem>
                         {status !== "paid" ? (
-                          <DropdownMenuItem onClick={() => handleQuickSettle(loan)}>
+                          <DropdownMenuItem onClick={() => void handleQuickSettle(loan)}>
                             <Icon name="check-check" className="size-4" />
                             Mark settled
                           </DropdownMenuItem>
                         ) : null}
                         <DropdownMenuSeparator />
-                        <DropdownMenuItem variant="destructive" onClick={() => deleteLoan(loan.id)}>
+                        <DropdownMenuItem variant="destructive" onClick={() => void handleDeleteLoan(loan.id)}>
                           <Icon name="trash-2" className="size-4" />
                           Delete
                         </DropdownMenuItem>
@@ -399,7 +421,7 @@ export default function BorrowedPage() {
                         variant="outline"
                         size="sm"
                         className="h-11 px-5 text-xs font-bold"
-                        onClick={() => handleQuickSettle(loan)}
+                        onClick={() => void handleQuickSettle(loan)}
                       >
                         Settle
                       </Button>
@@ -543,13 +565,13 @@ export default function BorrowedPage() {
                                   Edit details
                                 </DropdownMenuItem>
                                 {status !== "paid" ? (
-                                  <DropdownMenuItem onClick={() => handleQuickSettle(loan)}>
+                                  <DropdownMenuItem onClick={() => void handleQuickSettle(loan)}>
                                     <Icon name="check-check" className="size-4" />
                                     Mark settled
                                   </DropdownMenuItem>
                                 ) : null}
                                 <DropdownMenuSeparator />
-                                <DropdownMenuItem variant="destructive" onClick={() => deleteLoan(loan.id)}>
+                                <DropdownMenuItem variant="destructive" onClick={() => void handleDeleteLoan(loan.id)}>
                                   <Icon name="trash-2" className="size-4" />
                                   Delete
                                 </DropdownMenuItem>
@@ -583,12 +605,20 @@ export default function BorrowedPage() {
         editingLoan={editingLoan}
         currencySymbol={data.settings.currencySymbol}
         onSave={(loanData) => {
-          if (editingLoan) {
-            updateLoan(editingLoan.id, loanData)
-          } else {
-            addLoan(loanData)
-          }
-          setLoanModalOpen(false)
+          void (async () => {
+            try {
+              if (editingLoan) {
+                await updateLoan(editingLoan.id, loanData)
+                toast.success("Loan updated")
+              } else {
+                await addLoan(loanData)
+                toast.success("Loan created")
+              }
+              setLoanModalOpen(false)
+            } catch (error) {
+              toast.error(error instanceof Error ? error.message : "Could not save loan.")
+            }
+          })()
         }}
       />
 

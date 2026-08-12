@@ -38,9 +38,13 @@ export function QuickAddPresetsManager({ compact = false }: { compact?: boolean 
     setDialogOpen(true)
   }
 
-  const handleDelete = (preset: QuickAddPreset) => {
-    deleteQuickAddPreset(preset.id)
-    toast.success(`Removed "${preset.label}"`)
+  const handleDelete = async (preset: QuickAddPreset) => {
+    try {
+      await deleteQuickAddPreset(preset.id)
+      toast.success(`Removed "${preset.label}"`)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not delete preset.")
+    }
   }
 
   if (compact) {
@@ -132,14 +136,20 @@ export function QuickAddPresetsManager({ compact = false }: { compact?: boolean 
         categories={expenseCategories}
         currencySymbol={data.settings.currencySymbol}
         onSave={(payload) => {
-          if (editing) {
-            updateQuickAddPreset(editing.id, payload)
-            toast.success("Preset updated")
-          } else {
-            addQuickAddPreset(payload)
-            toast.success("Preset added")
-          }
-          setDialogOpen(false)
+          void (async () => {
+            try {
+              if (editing) {
+                await updateQuickAddPreset(editing.id, payload)
+                toast.success("Preset updated")
+              } else {
+                await addQuickAddPreset(payload)
+                toast.success("Preset added")
+              }
+              setDialogOpen(false)
+            } catch (error) {
+              toast.error(error instanceof Error ? error.message : "Could not save preset.")
+            }
+          })()
         }}
       />
     </div>

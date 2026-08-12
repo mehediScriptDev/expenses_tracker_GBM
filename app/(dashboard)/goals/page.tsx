@@ -32,58 +32,9 @@ import { cn } from "@/lib/utils"
 
 import type { Goal } from "@/types"
 
-const STORAGE_GOALS_KEY = "finbuddy:goals:v1"
-
-const DEFAULT_GOALS: Goal[] = [
-  {
-    id: "g_1",
-    title: "Emergency Safety Reserve",
-    targetAmount: 50000,
-    currentAmount: 32000,
-    targetDate: "2026-12-31",
-    icon: "piggy-bank",
-    color: "var(--chart-4)",
-    createdAt: Date.now() - 30 * 86400000,
-  },
-  {
-    id: "g_2",
-    title: "Laptop Upgrade Fund",
-    targetAmount: 85000,
-    currentAmount: 45000,
-    targetDate: "2026-10-15",
-    icon: "laptop",
-    color: "var(--chart-2)",
-    createdAt: Date.now() - 15 * 86400000,
-  },
-  {
-    id: "g_3",
-    title: "Family Vacation Trip",
-    targetAmount: 25000,
-    currentAmount: 25000,
-    targetDate: "2026-08-10",
-    icon: "plane",
-    color: "var(--chart-3)",
-    createdAt: Date.now() - 60 * 86400000,
-  },
-]
-
 export default function GoalsPage() {
-  const { data } = useStore()
-  const [goals, setGoals] = React.useState<Goal[]>(() => {
-    if (typeof window === "undefined") return DEFAULT_GOALS
-    try {
-      const raw = window.localStorage.getItem(STORAGE_GOALS_KEY)
-      return raw ? JSON.parse(raw) : DEFAULT_GOALS
-    } catch {
-      return DEFAULT_GOALS
-    }
-  })
-
-  React.useEffect(() => {
-    try {
-      window.localStorage.setItem(STORAGE_GOALS_KEY, JSON.stringify(goals))
-    } catch { }
-  }, [goals])
+  const { data, addGoal, updateGoal, depositGoal, deleteGoal } = useStore()
+  const goals = data.goals
 
   const [addModalOpen, setAddModalOpen] = React.useState(false)
   const [editingGoal, setEditingGoal] = React.useState<Goal | null>(null)
@@ -154,22 +105,37 @@ export default function GoalsPage() {
     setDepositModalOpen(true)
   }
 
-  const handleSaveDeposit = (e: React.FormEvent) => {
+  const handleSaveDeposit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!targetGoal) return
     const add = parseFloat(depositAmt)
-    if (!isNaN(add) && add !== 0) {
-      setGoals((prev) =>
-        prev.map((g) => (g.id === targetGoal.id ? { ...g, currentAmount: Math.max(0, g.currentAmount + add) } : g)),
-      )
-      toast.success(`Updated savings for ${targetGoal.title}`)
+    if (isNaN(add) || add === 0) {
+      toast.error("Enter a valid amount.")
+      return
     }
-    setDepositModalOpen(false)
+
+    try {
+      if (add > 0) {
+        await depositGoal(targetGoal.id, add)
+      } else {
+        await updateGoal(targetGoal.id, {
+          currentAmount: Math.max(0, targetGoal.currentAmount + add),
+        })
+      }
+      toast.success(`Updated savings for ${targetGoal.title}`)
+      setDepositModalOpen(false)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not update savings.")
+    }
   }
 
-  const handleDeleteGoal = (id: string) => {
-    setGoals((prev) => prev.filter((g) => g.id !== id))
-    toast.success("Goal deleted")
+  const handleDeleteGoal = async (id: string) => {
+    try {
+      await deleteGoal(id)
+      toast.success("Goal deleted")
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not delete goal.")
+    }
   }
 
   const stats = [
@@ -406,7 +372,7 @@ export default function GoalsPage() {
                         </button>
                         <button
                           type="button"
-                          onClick={() => handleDeleteGoal(g.id)}
+                          onClick={() => void handleDeleteGoal(g.id)}
                           aria-label={`Delete ${g.title}`}
                           className="flex size-11 items-center justify-center rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-400 hover:border-rose-600 hover:bg-rose-600 hover:text-white dark:hover:border-rose-600 dark:hover:bg-rose-600 transition-all cursor-pointer"
                         >
@@ -529,7 +495,7 @@ export default function GoalsPage() {
                                 {/* Delete Button */}
                                 <button
                                   type="button"
-                                  onClick={() => handleDeleteGoal(g.id)}
+                                  onClick={() => void handleDeleteGoal(g.id)}
                                   className="flex size-8 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-900/60 bg-rose-50/60 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 hover:bg-rose-600 hover:text-white hover:border-rose-600 transition-all cursor-pointer shadow-2xs"
                                   title="Delete goal"
                                   aria-label={`Delete ${g.title}`}
@@ -566,13 +532,19 @@ export default function GoalsPage() {
         editingGoal={editingGoal}
         currencySymbol={data.settings.currencySymbol}
         onSave={(goalData) => {
-          if (editingGoal) {
-            setGoals((prev) => prev.map((g) => (g.id === editingGoal.id ? { ...g, ...goalData } : g)))
-          } else {
-            setGoals((prev) => [{ ...goalData, id: `g_${Date.now()}`, createdAt: Date.now() }, ...prev])
-          }
-          setAddModalOpen(false)
-          toast.success("Goal saved successfully!")
+          void (async () => {
+            try {
+              if (editingGoal) {
+                await updateGoal(editingGoal.id, goalData)
+              } else {
+                await addGoal(goalData)
+              }
+              setAddModalOpen(false)
+              toast.success("Goal saved successfully!")
+            } catch (error) {
+              toast.error(error instanceof Error ? error.message : "Could not save goal.")
+            }
+          })()
         }}
       />
 

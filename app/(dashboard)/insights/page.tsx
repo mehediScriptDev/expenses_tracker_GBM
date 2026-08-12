@@ -3,7 +3,7 @@
 import * as React from "react"
 import { EmptyState, CategoryBadge, DashPage, PageHeader } from "@/dashboard/shared"
 import { useStore } from "@/lib/store"
-import { txInRange, sumExpenses, sumIncome, getCategory } from "@/lib/selectors"
+import { useInsightsData } from "@/lib/hooks/use-insights-data"
 import { formatMoney } from "@/lib/format"
 import { Icon } from "@/lib/icon"
 import { cn } from "@/lib/utils"
@@ -11,75 +11,74 @@ import { cn } from "@/lib/utils"
 const MONTH_SHORT = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
 const MONTH_FULL  = ["January","February","March","April","May","June","July","August","September","October","November","December"]
 
-function mRange(year: number, month: number) {
-  return { start: new Date(year, month, 1), end: new Date(year, month + 1, 1) }
-}
-function yRange(year: number) {
-  return { start: new Date(year, 0, 1), end: new Date(year + 1, 0, 1) }
-}
-
 export default function InsightsPage() {
   const { data } = useStore()
   const today = React.useMemo(() => new Date(), [])
 
-  const [year, setYear]   = React.useState(today.getFullYear())
+  const [year, setYear] = React.useState(today.getFullYear())
   const [month, setMonth] = React.useState(today.getMonth())
 
+  const { summaries, selectedSummary, loading, error } = useInsightsData(year, month)
   const sym = data.settings.currencySymbol
 
-  const yearBars = React.useMemo(() =>
-    MONTH_SHORT.map((label, i) => {
-      const range = mRange(year, i)
-      const txs   = txInRange(data.transactions, range)
-      return {
-        label, monthIdx: i,
-        expenses: sumExpenses(txs.filter(t => t.type === "expense")),
-        income:   sumIncome(txs),
-        isFuture: year === today.getFullYear() && i > today.getMonth(),
-      }
-    }), [data.transactions, year, today])
+  const yearBars = React.useMemo(
+    () =>
+      MONTH_SHORT.map((label, i) => {
+        const summary = summaries.find((row) => row.year === year && row.month === i + 1)
+        return {
+          label,
+          monthIdx: i,
+          expenses: summary?.total_expenses ?? 0,
+          income: summary?.total_income ?? 0,
+          isFuture: year === today.getFullYear() && i > today.getMonth(),
+        }
+      }),
+    [summaries, year, today],
+  )
 
-  const maxExpense = Math.max(...yearBars.map(b => b.expenses), 1)
+  const maxExpense = Math.max(...yearBars.map((b) => b.expenses), 1)
 
-  const yearTotal = React.useMemo(() => {
-    const range = yRange(year)
-    const txs   = txInRange(data.transactions, range)
-    return {
-      expenses: sumExpenses(txs.filter(t => t.type === "expense")),
-      income:   sumIncome(txs),
-    }
-  }, [data.transactions, year])
+  const yearTotal = React.useMemo(
+    () =>
+      yearBars.reduce(
+        (acc, bar) => ({
+          expenses: acc.expenses + bar.expenses,
+          income: acc.income + bar.income,
+        }),
+        { expenses: 0, income: 0 },
+      ),
+    [yearBars],
+  )
 
   const selected = React.useMemo(() => {
-    const range    = mRange(year, month)
-    const txs      = txInRange(data.transactions, range)
-    const expenses = txs.filter(t => t.type === "expense")
-    const incomes  = txs.filter(t => t.type === "income")
-    const totalExp = sumExpenses(expenses)
-    const totalInc = sumIncome(txs)
-
-    const catMap = new Map<string, { total: number; count: number }>()
-    for (const t of expenses) {
-      const cur = catMap.get(t.categoryId) ?? { total: 0, count: 0 }
-      cur.total += t.amount; cur.count += 1
-      catMap.set(t.categoryId, cur)
-    }
-
-    const cats = Array.from(catMap.entries())
-      .map(([catId, v]) => {
-        const cat = getCategory(data, catId)
-        if (!cat) return null
-        return { catId, cat, ...v, pct: totalExp > 0 ? (v.total / totalExp) * 100 : 0 }
-      })
-      .filter(Boolean)
-      .sort((a, b) => b!.total - a!.total) as Array<{
-        catId: string; cat: ReturnType<typeof getCategory> & object
-        total: number; count: number; pct: number
-      }>
-
+    const totalExp = selectedSummary?.total_expenses ?? 0
+    const totalInc = selectedSummary?.total_income ?? 0
+    const cats = (selectedSummary?.top_categories ?? []).map((row) => ({
+      catId: row.category_id,
+      cat: {
+        id: row.category_id,
+        name: row.name,
+        icon: row.icon,
+        color: row.color,
+        kind: "expense" as const,
+        isCustom: false,
+      },
+      total: row.total,
+      count: row.count,
+      pct: totalExp > 0 ? (row.total / totalExp) * 100 : 0,
+    }))
     const topCat = cats[0] ?? null
-    return { totalExp, totalInc, cats, txCount: expenses.length, incomeCount: incomes.length, topCat }
-  }, [data, year, month])
+    const txCount = selectedSummary?.transaction_count ?? 0
+
+    return {
+      totalExp,
+      totalInc,
+      cats,
+      txCount,
+      incomeCount: totalInc > 0 ? 1 : 0,
+      topCat,
+    }
+  }, [selectedSummary])
 
   const savings = selected.totalInc - selected.totalExp
 
@@ -97,7 +96,7 @@ export default function InsightsPage() {
     {
       label: "Income",
       value: formatMoney(selected.totalInc, { symbol: sym }),
-      sub: `${selected.incomeCount} transactions`,
+      sub: selected.totalInc > 0 ? "Recorded this month" : "No income",
       icon: "trending-up",
       cardBg: "bg-[#EBF7EE] dark:bg-[#0B2E17]",
       textColor: "text-[#134D25] dark:text-[#C1F0CC]",
@@ -134,12 +133,17 @@ export default function InsightsPage() {
         description="Understand where your money goes — by month, by year, by category."
       />
 
-      <div className="rounded-2xl border border-neutral-200/80 dark:border-neutral-800 bg-white dark:bg-card shadow-sm overflow-hidden">
+      {error ? (
+        <div className="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900 dark:border-rose-900/50 dark:bg-rose-950/40 dark:text-rose-100">
+          Could not load insights from server: {error}
+        </div>
+      ) : null}
 
+      <div className="rounded-2xl border border-neutral-200/80 dark:border-neutral-800 bg-white dark:bg-card shadow-sm overflow-hidden">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 px-5 sm:px-7 pt-5 pb-4 border-b border-neutral-100 dark:border-neutral-800">
           <div className="flex items-center gap-2">
             <button
-              onClick={() => setYear(y => y - 1)}
+              onClick={() => setYear((y) => y - 1)}
               className="flex size-8 items-center justify-center rounded-lg border border-neutral-200 dark:border-neutral-700 text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors cursor-pointer"
             >
               <Icon name="chevron-left" className="size-4" />
@@ -148,7 +152,7 @@ export default function InsightsPage() {
               {year}
             </span>
             <button
-              onClick={() => setYear(y => Math.min(y + 1, today.getFullYear()))}
+              onClick={() => setYear((y) => Math.min(y + 1, today.getFullYear()))}
               disabled={year >= today.getFullYear()}
               className="flex size-8 items-center justify-center rounded-lg border border-neutral-200 dark:border-neutral-700 text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
             >
@@ -160,13 +164,13 @@ export default function InsightsPage() {
             <div className="text-right">
               <div className="text-[10px] font-extrabold uppercase tracking-wider text-neutral-400">{year} Total Spent</div>
               <div className="font-mono text-sm font-black text-rose-600 dark:text-rose-400 tabular-nums">
-                {formatMoney(yearTotal.expenses, { symbol: sym })}
+                {loading ? "…" : formatMoney(yearTotal.expenses, { symbol: sym })}
               </div>
             </div>
             <div className="text-right">
               <div className="text-[10px] font-extrabold uppercase tracking-wider text-neutral-400">{year} Total Income</div>
               <div className="font-mono text-sm font-black text-emerald-600 dark:text-emerald-400 tabular-nums">
-                {formatMoney(yearTotal.income, { symbol: sym })}
+                {loading ? "…" : formatMoney(yearTotal.income, { symbol: sym })}
               </div>
             </div>
           </div>
@@ -272,7 +276,7 @@ export default function InsightsPage() {
                 </p>
               </div>
               <p className={cn("mt-2.5 truncate font-mono text-lg font-black tabular-nums tracking-tight sm:text-xl", s.textColor)}>
-                {s.value}
+                {loading ? "…" : s.value}
               </p>
               <p className={cn("mt-0.5 truncate text-[11px] font-semibold opacity-70", s.labelColor)}>
                 {s.sub}
@@ -285,15 +289,17 @@ export default function InsightsPage() {
           <h3 className="text-sm font-extrabold text-neutral-800 dark:text-neutral-200">
             {MONTH_FULL[month]} {year}
             <span className="ml-2 text-[11px] font-semibold text-neutral-400">
-              · {selected.txCount} transactions
+              · {loading ? "…" : `${selected.txCount} transactions`}
             </span>
           </h3>
           <span className="text-[11px] font-semibold text-neutral-400">
-            {selected.cats.length} categories
+            {loading ? "…" : `${selected.cats.length} categories`}
           </span>
         </div>
 
-        {selected.cats.length === 0 ? (
+        {loading ? (
+          <div className="py-10 text-center text-sm text-neutral-500">Loading month summary…</div>
+        ) : selected.cats.length === 0 ? (
           <EmptyState
             icon="receipt"
             title="No expenses this month"
