@@ -274,19 +274,6 @@ export function TransactionDialog({ open, onOpenChange, editing }: TransactionDi
             </div>
           )}
 
-          {/* recurring */}
-          <label className="flex items-center justify-between rounded-lg bg-[#F2EFE9] px-3 py-2">
-            <span className="text-sm">
-              <span className="font-medium">Recurring</span>
-              <span className="block text-xs text-muted-foreground">
-                Repeats every month
-              </span>
-            </span>
-            <Switch
-              checked={form.recurring}
-              onCheckedChange={(v) => set("recurring", v)}
-            />
-          </label>
 
           <div className="flex justify-end gap-2 pt-1">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
