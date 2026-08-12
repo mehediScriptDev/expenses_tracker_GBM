@@ -69,5 +69,6 @@ export const CATEGORY_COLOR_CHOICES = [
   "var(--chart-1)", "var(--chart-2)", "var(--chart-3)", "var(--chart-4)", "var(--chart-5)",
 ]
 
-export const STORAGE_KEY = "finbuddy:data:v3"
-export const AUTH_KEY = "finbuddy:auth:v1"
+export const AUTH_KEY = "goribmanush:auth:v1"
+export const ACCESS_TOKEN_KEY = "goribmanush:access-token"
+export const REFRESH_TOKEN_KEY = "goribmanush:refresh-token"

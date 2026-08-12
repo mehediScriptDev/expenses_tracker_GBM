@@ -24,6 +24,7 @@ function SidebarBrand({ onClose }: { onClose: () => void }) {
         width={160}
         height={44}
         className="h-10 w-auto object-contain"
+        style={{ width: "auto" }}
         priority
       />
     </Link>
@@ -68,7 +69,7 @@ function SidebarFooter({ onClose }: { onClose: () => void }) {
 
   const handleLogout = () => {
     onClose()
-    logout()
+    void logout()
     router.push("/")
   }
 

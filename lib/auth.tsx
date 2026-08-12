@@ -1,11 +1,26 @@
 "use client"
 
 import * as React from "react"
-import { AUTH_KEY } from "./constants"
+import { ACCESS_TOKEN_KEY, AUTH_KEY, REFRESH_TOKEN_KEY } from "./constants"
+import * as authApi from "./api/auth"
+import type { BackendUser } from "./api/types"
+import { ApiError } from "./api/client"
 
 export interface AuthUser {
+  id: string
   email: string
   name: string
+  authProvider?: BackendUser["auth_provider"]
+  currencyCode?: string
+  currencySymbol?: string
+  monthlySalary?: number | null
+  salaryDay?: number
+}
+
+interface AuthSession {
+  user: AuthUser
+  accessToken: string
+  refreshToken: string
 }
 
 interface AuthContextValue {
@@ -14,31 +29,66 @@ interface AuthContextValue {
   hydrated: boolean
   login: (email: string, password: string) => Promise<void>
   signup: (name: string, email: string, password: string) => Promise<void>
-  logout: () => void
+  loginWithGoogle: (idToken: string) => Promise<void>
+  logout: () => Promise<void>
+  applyProfile: (profile: BackendUser) => void
 }
 
 const AuthContext = React.createContext<AuthContextValue | null>(null)
 
-function readStoredUser(): AuthUser | null {
+function mapUser(user: BackendUser): AuthUser {
+  return {
+    id: user.id,
+    email: user.email,
+    name: user.name?.trim() || user.email.split("@")[0],
+    authProvider: user.auth_provider,
+    currencyCode: user.currency_code,
+    currencySymbol: user.currency_symbol,
+    monthlySalary: user.monthly_salary,
+    salaryDay: user.salary_day,
+  }
+}
+
+function readStoredSession(): AuthSession | null {
   if (typeof window === "undefined") return null
+
   try {
-    const raw = window.localStorage.getItem(AUTH_KEY)
-    if (!raw) return null
-    const parsed = JSON.parse(raw) as AuthUser
-    if (!parsed?.email) return null
-    return parsed
+    const rawUser = window.localStorage.getItem(AUTH_KEY)
+    const accessToken = window.localStorage.getItem(ACCESS_TOKEN_KEY)
+    const refreshToken = window.localStorage.getItem(REFRESH_TOKEN_KEY)
+
+    if (!rawUser || !accessToken || !refreshToken) return null
+
+    const user = JSON.parse(rawUser) as AuthUser
+    if (!user?.id || !user?.email) return null
+
+    return { user, accessToken, refreshToken }
   } catch {
     return null
   }
 }
 
-function persistUser(user: AuthUser | null) {
+function persistSession(session: AuthSession | null) {
   if (typeof window === "undefined") return
-  if (!user) {
+
+  if (!session) {
     window.localStorage.removeItem(AUTH_KEY)
+    window.localStorage.removeItem(ACCESS_TOKEN_KEY)
+    window.localStorage.removeItem(REFRESH_TOKEN_KEY)
     return
   }
-  window.localStorage.setItem(AUTH_KEY, JSON.stringify(user))
+
+  window.localStorage.setItem(AUTH_KEY, JSON.stringify(session.user))
+  window.localStorage.setItem(ACCESS_TOKEN_KEY, session.accessToken)
+  window.localStorage.setItem(REFRESH_TOKEN_KEY, session.refreshToken)
+}
+
+function applyAuthPayload(payload: { user: BackendUser; accessToken: string; refreshToken: string }): AuthSession {
+  return {
+    user: mapUser(payload.user),
+    accessToken: payload.accessToken,
+    refreshToken: payload.refreshToken,
+  }
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -46,8 +96,58 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [hydrated, setHydrated] = React.useState(false)
 
   React.useEffect(() => {
-    setUser(readStoredUser())
-    setHydrated(true)
+    let cancelled = false
+
+    async function hydrateSession() {
+      const stored = readStoredSession()
+      if (!stored) {
+        if (!cancelled) setHydrated(true)
+        return
+      }
+
+      try {
+        const profile = await authApi.getProfile(stored.accessToken)
+        if (cancelled) return
+
+        const session = {
+          user: mapUser(profile),
+          accessToken: stored.accessToken,
+          refreshToken: stored.refreshToken,
+        }
+        persistSession(session)
+        setUser(session.user)
+      } catch (error) {
+        if (!(error instanceof ApiError) || error.status !== 401) {
+          persistSession(null)
+          if (!cancelled) setHydrated(true)
+          return
+        }
+
+        try {
+          const refreshed = await authApi.refreshAccessToken(stored.refreshToken)
+          if (cancelled) return
+
+          const session = applyAuthPayload(refreshed)
+          persistSession(session)
+          setUser(session.user)
+        } catch {
+          persistSession(null)
+        }
+      } finally {
+        if (!cancelled) setHydrated(true)
+      }
+    }
+
+    void hydrateSession()
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const setSession = React.useCallback((session: AuthSession) => {
+    persistSession(session)
+    setUser(session.user)
   }, [])
 
   const login = React.useCallback(async (email: string, password: string) => {
@@ -56,15 +156,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       throw new Error("Email and password are required.")
     }
 
-    const existing = readStoredUser()
-    const nextUser: AuthUser = {
-      email: trimmedEmail,
-      name: existing?.email === trimmedEmail ? existing.name : trimmedEmail.split("@")[0],
-    }
-
-    persistUser(nextUser)
-    setUser(nextUser)
-  }, [])
+    const payload = await authApi.loginUser(trimmedEmail, password)
+    setSession(applyAuthPayload(payload))
+  }, [setSession])
 
   const signup = React.useCallback(async (name: string, email: string, password: string) => {
     const trimmedName = name.trim()
@@ -73,14 +167,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       throw new Error("Name, email, and password are required.")
     }
 
-    const nextUser: AuthUser = { email: trimmedEmail, name: trimmedName }
-    persistUser(nextUser)
-    setUser(nextUser)
+    const payload = await authApi.registerUser(trimmedName, trimmedEmail, password)
+    setSession(applyAuthPayload(payload))
+  }, [setSession])
+
+  const loginWithGoogle = React.useCallback(async (idToken: string) => {
+    if (!idToken.trim()) {
+      throw new Error("Google sign-in failed. Please try again.")
+    }
+
+    const payload = await authApi.googleLogin(idToken)
+    setSession(applyAuthPayload(payload))
+  }, [setSession])
+
+  const applyProfile = React.useCallback((profile: BackendUser) => {
+    const stored = readStoredSession()
+    if (!stored) return
+
+    const session = {
+      ...stored,
+      user: mapUser(profile),
+    }
+    persistSession(session)
+    setUser(session.user)
   }, [])
 
-  const logout = React.useCallback(() => {
-    persistUser(null)
-    setUser(null)
+  const logout = React.useCallback(async () => {
+    try {
+      await authApi.logoutUser()
+    } catch {
+      // Clear local session even if the API call fails.
+    } finally {
+      persistSession(null)
+      setUser(null)
+    }
   }, [])
 
   const value = React.useMemo<AuthContextValue>(
@@ -90,9 +210,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       hydrated,
       login,
       signup,
+      loginWithGoogle,
       logout,
+      applyProfile,
     }),
-    [user, hydrated, login, signup, logout],
+    [user, hydrated, login, signup, loginWithGoogle, logout, applyProfile],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

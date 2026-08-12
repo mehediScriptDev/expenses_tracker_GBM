@@ -10,14 +10,14 @@ import {
   dashSegmentItemActive,
   dashInput,
   DashPage,
-  SummaryBar,
   FilterToolbar,
   DateGroupHeader,
   Pagination,
 } from "@/dashboard/shared"
 import { TransactionRow } from "@/dashboard/transactions/transaction-row"
 import { useStore } from "@/lib/store"
-import { getCategory, sumExpenses, sumIncome } from "@/lib/selectors"
+import { useTransactionList } from "@/lib/hooks/use-transaction-list"
+import { sumExpenses, sumIncome } from "@/lib/selectors"
 import { formatMoney } from "@/lib/format"
 import { Icon } from "@/lib/icon"
 import { Button } from "@/components/ui/button"
@@ -27,7 +27,7 @@ import { cn } from "@/lib/utils"
 type TypeFilter = "all" | "expense" | "income"
 
 export default function TransactionsPage() {
-  const { data } = useStore()
+  const { data, transactionRevision } = useStore()
   const ui = useUI()
 
   const [search, setSearch] = React.useState("")
@@ -39,54 +39,36 @@ export default function TransactionsPage() {
     setCurrentPage(1)
   }, [search, typeFilter])
 
-  const filteredTransactions = React.useMemo(() => {
-    const list = Array.isArray(data.transactions) ? data.transactions : []
-
-    return list
-      .filter((tx) => {
-        if (!tx) return false
-
-        if (search.trim()) {
-          const q = search.toLowerCase().trim()
-          const cat = getCategory(data, tx.categoryId)
-          const desc = (tx.description || "").toLowerCase()
-          const catName = (cat?.name || "").toLowerCase()
-          const merchant = (tx.merchant || "").toLowerCase()
-          if (!desc.includes(q) && !catName.includes(q) && !merchant.includes(q)) {
-            return false
-          }
-        }
-
-        if (typeFilter === "expense" && tx.type !== "expense") return false
-        if (typeFilter === "income" && tx.type !== "income") return false
-
-        return true
-      })
-      .sort((a, b) => (b.date || "").localeCompare(a.date || "") || (b.createdAt || 0) - (a.createdAt || 0))
-  }, [data, search, typeFilter])
+  const { transactions, meta, statsTransactions, loading, error } = useTransactionList({
+    page: currentPage,
+    pageSize,
+    typeFilter,
+    search,
+    revision: transactionRevision,
+  })
 
   const totals = React.useMemo(() => {
-    const income = sumIncome(filteredTransactions)
-    const expense = sumExpenses(filteredTransactions)
-    return { income, expense, net: income - expense, count: filteredTransactions.length }
-  }, [filteredTransactions])
+    const income = sumIncome(statsTransactions)
+    const expense = sumExpenses(statsTransactions)
+    return {
+      income,
+      expense,
+      net: income - expense,
+      count: meta?.total ?? statsTransactions.length,
+    }
+  }, [statsTransactions, meta])
 
-  const totalPages = Math.ceil(filteredTransactions.length / pageSize) || 1
-
-  const paginatedTransactions = React.useMemo(() => {
-    const start = (currentPage - 1) * pageSize
-    return filteredTransactions.slice(start, start + pageSize)
-  }, [filteredTransactions, currentPage, pageSize])
+  const totalPages = Math.ceil((meta?.total ?? 0) / pageSize) || 1
 
   const grouped = React.useMemo(() => {
-    const groups: { [date: string]: typeof paginatedTransactions } = {}
-    for (const tx of paginatedTransactions) {
+    const groups: { [date: string]: typeof transactions } = {}
+    for (const tx of transactions) {
       const txDate = tx.date || "Unknown Date"
       if (!groups[txDate]) groups[txDate] = []
       groups[txDate].push(tx)
     }
     return Object.entries(groups).sort(([a], [b]) => b.localeCompare(a))
-  }, [paginatedTransactions])
+  }, [transactions])
 
   const stats = [
     {
@@ -126,6 +108,8 @@ export default function TransactionsPage() {
       labelColor: "text-[#7A5C00] dark:text-[#FFDF80]",
     },
   ]
+
+  const isEmpty = !loading && transactions.length === 0
 
   return (
     <DashPage>
@@ -167,7 +151,7 @@ export default function TransactionsPage() {
             className="absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-(--dash-text-faint)"
           />
           <Input
-            placeholder="Search description, category, or merchant..."
+            placeholder="Search description..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className={cn(dashInput, "border-0 bg-(--dash-surface) pl-10 shadow-none")}
@@ -202,7 +186,11 @@ export default function TransactionsPage() {
         </div>
       </FilterToolbar>
 
-      {filteredTransactions.length === 0 ? (
+      {error ? (
+        <EmptyState icon="circle-alert" title="Could not load transactions" message={error} />
+      ) : loading ? (
+        <div className="py-16 text-center text-sm text-(--dash-text-muted)">Loading transactions...</div>
+      ) : isEmpty ? (
         <EmptyState
           icon="receipt-text"
           title="No transactions found"
@@ -259,7 +247,7 @@ export default function TransactionsPage() {
             currentPage={currentPage}
             totalPages={totalPages}
             onPageChange={setCurrentPage}
-            totalItems={filteredTransactions.length}
+            totalItems={meta?.total ?? 0}
             pageSize={pageSize}
             onPageSizeChange={setPageSize}
             pageSizeOptions={[10, 20, 50, 100]}

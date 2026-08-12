@@ -4,6 +4,7 @@ import { Plus_Jakarta_Sans, Fraunces, Geist_Mono } from "next/font/google"
 import { Analytics } from "@vercel/analytics/next"
 import { StoreProvider } from "@/lib/store"
 import { AuthProvider } from "@/lib/auth"
+import { GoogleAuthProvider } from "@/components/providers/google-auth-provider"
 import { Toaster } from "@/components/ui/sonner"
 import "./globals.css"
 
@@ -30,11 +31,13 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en" className="light bg-background">
+    <html lang="en" data-scroll-behavior="smooth" className="light bg-background">
       <body className={`${jakarta.variable} ${fraunces.variable} ${geistMono.variable} font-sans antialiased`}>
-        <AuthProvider>
-          <StoreProvider>{children}</StoreProvider>
-        </AuthProvider>
+        <GoogleAuthProvider>
+          <AuthProvider>
+            <StoreProvider>{children}</StoreProvider>
+          </AuthProvider>
+        </GoogleAuthProvider>
         <Toaster position="top-center" />
         {process.env.NODE_ENV === "production" && <Analytics />}
       </body>

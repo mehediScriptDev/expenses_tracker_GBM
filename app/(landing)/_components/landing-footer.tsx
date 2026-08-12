@@ -22,6 +22,7 @@ export function LandingFooter() {
                 width={240}
                 height={64}
                 className="h-14 w-auto object-contain object-left lg:h-16"
+                style={{ width: "auto" }}
               />
             </Link>
             <p className="text-xs sm:text-sm text-neutral-700 max-w-sm leading-relaxed font-medium">

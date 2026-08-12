@@ -13,8 +13,9 @@ import {
   AuthShell,
   AuthTerms,
   AuthTitle,
-  GoogleAuthButton,
 } from "@/landing/auth/auth-shell"
+import { GoogleSignInButton } from "@/landing/auth/google-sign-in-button"
+import { isGoogleAuthConfigured } from "@/components/providers/google-auth-provider"
 
 type AuthMode = "login" | "forgot_email" | "forgot_code" | "forgot_reset" | "forgot_success"
 
@@ -52,10 +53,6 @@ export default function LoginPage() {
     } finally {
       setSubmitting(false)
     }
-  }
-
-  const handleGoogle = () => {
-    toast.info("Google sign-in will be available soon.")
   }
 
   const handleStartForgotPassword = () => {
@@ -255,11 +252,17 @@ export default function LoginPage() {
         </Button>
       </form>
 
-      <div className="mt-6 space-y-4">
-        <AuthDivider />
-        <GoogleAuthButton onClick={handleGoogle} />
-        <AuthTerms />
-      </div>
+      {isGoogleAuthConfigured() ? (
+        <div className="mt-6 space-y-4">
+          <AuthDivider />
+          <GoogleSignInButton />
+          <AuthTerms />
+        </div>
+      ) : (
+        <div className="mt-6">
+          <AuthTerms />
+        </div>
+      )}
     </AuthShell>
   )
 }

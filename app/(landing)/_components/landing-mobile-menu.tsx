@@ -170,6 +170,7 @@ export function LandingMobileMenu({ open, onClose, isAuthenticated, hydrated }: 
             width={240}
             height={64}
             className="h-12 w-auto object-contain object-left"
+            style={{ width: "auto" }}
           />
         </Link>
 

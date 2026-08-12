@@ -12,7 +12,6 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Switch } from "@/components/ui/switch"
 import {
   Select,
   SelectContent,
@@ -45,11 +44,12 @@ interface FormState {
   recurring: boolean
 }
 
-function emptyForm(): FormState {
+function emptyForm(categories: { id: string; kind: string }[]): FormState {
+  const firstExpense = categories.find((c) => c.kind === "expense")
   return {
     type: "expense",
     amount: "",
-    categoryId: "food",
+    categoryId: firstExpense?.id ?? "",
     description: "",
     date: todayISO(),
     time: nowTime(),
@@ -75,13 +75,14 @@ function fromTx(tx: Transaction): FormState {
 
 export function TransactionDialog({ open, onOpenChange, editing }: TransactionDialogProps) {
   const { data, addTransaction, updateTransaction } = useStore()
-  const [form, setForm] = React.useState<FormState>(emptyForm)
+  const [form, setForm] = React.useState<FormState>(() => emptyForm(data.categories))
+  const [submitting, setSubmitting] = React.useState(false)
 
   React.useEffect(() => {
     if (open) {
-      setForm(editing ? fromTx(editing) : emptyForm())
+      setForm(editing ? fromTx(editing) : emptyForm(data.categories))
     }
-  }, [open, editing])
+  }, [open, editing, data.categories])
 
   const categories = data.categories.filter((c) => c.kind === form.type)
   const categoryItems = categories.map((c) => ({ value: c.id, label: c.name }))
@@ -90,13 +91,18 @@ export function TransactionDialog({ open, onOpenChange, editing }: TransactionDi
     setForm((f) => ({ ...f, [key]: value }))
   }
 
-  function submit(e: React.FormEvent) {
+  async function submit(e: React.FormEvent) {
     e.preventDefault()
     const amount = Number.parseFloat(form.amount)
     if (!amount || amount <= 0) {
       toast.error("Enter a valid amount")
       return
     }
+    if (!form.categoryId) {
+      toast.error("Select a category")
+      return
+    }
+
     const payload = {
       type: form.type,
       amount,
@@ -106,17 +112,24 @@ export function TransactionDialog({ open, onOpenChange, editing }: TransactionDi
       time: form.time,
       paymentMethod: form.paymentMethod,
       mood: form.mood === "none" ? undefined : form.mood,
-      tags: [],
       recurring: form.recurring,
     }
-    if (editing) {
-      updateTransaction(editing.id, payload)
-      toast.success("Transaction updated")
-    } else {
-      addTransaction(payload)
-      toast.success(form.type === "income" ? "Income added" : "Expense added")
+
+    setSubmitting(true)
+    try {
+      if (editing) {
+        await updateTransaction(editing.id, payload)
+        toast.success("Transaction updated")
+      } else {
+        await addTransaction(payload)
+        toast.success(form.type === "income" ? "Income added" : "Expense added")
+      }
+      onOpenChange(false)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not save transaction.")
+    } finally {
+      setSubmitting(false)
     }
-    onOpenChange(false)
   }
 
   return (
@@ -274,25 +287,14 @@ export function TransactionDialog({ open, onOpenChange, editing }: TransactionDi
             </div>
           )}
 
-          {/* recurring */}
-          <label className="flex items-center justify-between rounded-lg bg-[#F2EFE9] px-3 py-2">
-            <span className="text-sm">
-              <span className="font-medium">Recurring</span>
-              <span className="block text-xs text-muted-foreground">
-                Repeats every month
-              </span>
-            </span>
-            <Switch
-              checked={form.recurring}
-              onCheckedChange={(v) => set("recurring", v)}
-            />
-          </label>
 
           <div className="flex justify-end gap-2 pt-1">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
-            <Button type="submit" variant="dash">{editing ? "Save changes" : "Add"}</Button>
+            <Button type="submit" variant="dash" disabled={submitting}>
+              {submitting ? "Saving..." : editing ? "Save changes" : "Add"}
+            </Button>
           </div>
         </form>
       </DialogContent>

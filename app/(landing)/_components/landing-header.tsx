@@ -27,6 +27,7 @@ export function LandingHeader() {
               width={240}
               height={64}
               className="h-14 w-auto object-contain object-left lg:h-16"
+              style={{ width: "auto" }}
               priority
             />
           </Link>

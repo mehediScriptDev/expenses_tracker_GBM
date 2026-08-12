@@ -3,7 +3,6 @@
 import * as React from "react"
 import {
   PageHeader,
-  dashCard,
   dashLabel,
   dashCaption,
   dashInput,
@@ -13,18 +12,10 @@ import {
 import { QuickAddPresetsManager } from "@/dashboard/quick-add-presets-manager"
 import { useStore } from "@/lib/store"
 import { useAuth } from "@/lib/auth"
+import * as usersApi from "@/lib/api/users"
 import { Icon } from "@/lib/icon"
-import type { AppData } from "@/types"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from "@/components/ui/dialog"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 
@@ -63,22 +54,21 @@ function SettingsSection({
 }
 
 export default function SettingsPage() {
-  const { data, updateSettings, replaceAll, resetAll, loadDemo, resetNotificationInbox } = useStore()
-  const { user } = useAuth()
+  const { data, updateSettings, resetNotificationInbox } = useStore()
+  const { user, applyProfile } = useAuth()
 
   const [salary, setSalary] = React.useState<string>(String(data.settings.salary))
   const [salaryDate, setSalaryDate] = React.useState<string>(String(data.settings.salaryDate))
   const [currencySymbol, setCurrencySymbol] = React.useState<string>(data.settings.currencySymbol)
   const [currency, setCurrency] = React.useState<string>(data.settings.currency)
+  const [savingProfile, setSavingProfile] = React.useState(false)
+  const [savingPassword, setSavingPassword] = React.useState(false)
 
   const [currentPassword, setCurrentPassword] = React.useState("")
   const [newPassword, setNewPassword] = React.useState("")
   const [confirmPassword, setConfirmPassword] = React.useState("")
   const [showCurrentPassword, setShowCurrentPassword] = React.useState(false)
   const [showNewPassword, setShowNewPassword] = React.useState(false)
-
-  const [resetConfirmOpen, setResetConfirmOpen] = React.useState(false)
-  const fileInputRef = React.useRef<HTMLInputElement | null>(null)
 
   React.useEffect(() => {
     setSalary(String(data.settings.salary))
@@ -87,20 +77,37 @@ export default function SettingsPage() {
     setCurrency(data.settings.currency)
   }, [data.settings])
 
-  const handleSaveFinancialProfile = (e: React.FormEvent) => {
+  const handleSaveFinancialProfile = async (e: React.FormEvent) => {
     e.preventDefault()
-    const numSalary = parseFloat(salary) || 0
-    const numDate = parseInt(salaryDate, 10) || 1
-    updateSettings({
-      salary: Math.max(0, numSalary),
-      salaryDate: Math.min(28, Math.max(1, numDate)),
-      currencySymbol,
-      currency,
-    })
-    toast.success("Financial profile saved!")
+    const numSalary = Math.max(0, parseFloat(salary) || 0)
+    const numDate = Math.min(28, Math.max(1, parseInt(salaryDate, 10) || 1))
+    const currencyCode = currency.trim() || "BDT"
+
+    setSavingProfile(true)
+    try {
+      const profile = await usersApi.updateProfile({
+        monthly_salary: Math.round(numSalary),
+        salary_day: numDate,
+        currency_code: currencyCode,
+        currency_symbol: currencySymbol.trim() || "৳",
+      })
+
+      applyProfile(profile)
+      updateSettings({
+        salary: numSalary,
+        salaryDate: numDate,
+        currencySymbol: profile.currency_symbol,
+        currency: profile.currency_code,
+      })
+      toast.success("Financial profile saved!")
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not save profile.")
+    } finally {
+      setSavingProfile(false)
+    }
   }
 
-  const handleUpdatePassword = (e: React.FormEvent) => {
+  const handleUpdatePassword = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!currentPassword) {
       toast.error("Please enter your current password.")
@@ -114,52 +121,26 @@ export default function SettingsPage() {
       toast.error("New password and confirmation do not match.")
       return
     }
-    setCurrentPassword("")
-    setNewPassword("")
-    setConfirmPassword("")
-    toast.success("Password updated successfully!")
-  }
 
-  const handleExportData = () => {
+    setSavingPassword(true)
     try {
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" })
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement("a")
-      a.href = url
-      a.download = `gorib-manush-backup-${new Date().toISOString().slice(0, 10)}.json`
-      a.click()
-      URL.revokeObjectURL(url)
-      toast.success("Backup downloaded!")
-    } catch {
-      toast.error("Failed to export backup.")
+      await usersApi.changePassword(currentPassword, newPassword)
+      setCurrentPassword("")
+      setNewPassword("")
+      setConfirmPassword("")
+      toast.success("Password updated successfully!")
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not update password.")
+    } finally {
+      setSavingPassword(false)
     }
-  }
-
-  const handleImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    const reader = new FileReader()
-    reader.onload = (evt) => {
-      try {
-        const parsed = JSON.parse(evt.target?.result as string) as AppData
-        if (parsed && Array.isArray(parsed.transactions) && Array.isArray(parsed.categories)) {
-          replaceAll(parsed)
-          toast.success("Data imported successfully!")
-        } else {
-          toast.error("Invalid backup file format.")
-        }
-      } catch {
-        toast.error("Failed to parse JSON file.")
-      }
-    }
-    reader.readAsText(file)
   }
 
   return (
     <DashPage>
       <PageHeader
         title="Settings"
-        description="Configure account security, financial profile, quick-add shortcuts, and data backups."
+        description="Configure account security, financial profile, and quick-add shortcuts."
       />
 
       {/* 1. Account & Password Security */}
@@ -175,10 +156,10 @@ export default function SettingsPage() {
             </span>
             <div className="min-w-0 flex-1">
               <p className="font-bold text-(--dash-text) text-sm truncate">
-                {user?.name || "Mehedi Hasan"}
+                {user?.name || "Account"}
               </p>
               <p className="text-xs text-(--dash-text-muted) truncate">
-                {user?.email || "mehedi@dev.com"}
+                {user?.email || ""}
               </p>
             </div>
             <span className="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded bg-(--dash-success-soft) text-(--dash-income) border border-(--dash-border)">
@@ -187,7 +168,8 @@ export default function SettingsPage() {
           </div>
 
           {/* Change Password Form */}
-          <form onSubmit={handleUpdatePassword} className="space-y-4 pt-1">
+          {user?.authProvider !== "GOOGLE" ? (
+          <form onSubmit={(e) => void handleUpdatePassword(e)} className="space-y-4 pt-1">
             <h4 className="text-xs font-black uppercase tracking-wider text-(--dash-text-muted)">
               Change Password
             </h4>
@@ -250,11 +232,14 @@ export default function SettingsPage() {
               </div>
             </div>
 
-            <Button variant="dash" type="submit" className="gap-1.5 mt-2">
+            <Button variant="dash" type="submit" className="gap-1.5 mt-2" disabled={savingPassword}>
               <Icon name="key-round" className="size-4" />
-              Update password
+              {savingPassword ? "Updating..." : "Update password"}
             </Button>
           </form>
+          ) : (
+            <p className={dashCaption}>Password is managed by Google for this account.</p>
+          )}
         </div>
       </SettingsSection>
 
@@ -263,7 +248,7 @@ export default function SettingsPage() {
         title="Financial profile & currency"
         description="Monthly salary, payday date, and preferred currency."
       >
-        <form onSubmit={handleSaveFinancialProfile} className="space-y-5">
+        <form onSubmit={(e) => void handleSaveFinancialProfile(e)} className="space-y-5">
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-1.5">
               <label className={dashLabel}>Monthly salary</label>
@@ -327,9 +312,9 @@ export default function SettingsPage() {
             </div>
           </div>
 
-          <Button variant="dash" type="submit" className="gap-1.5">
+          <Button variant="dash" type="submit" className="gap-1.5" disabled={savingProfile}>
             <Icon name="check" className="size-4" />
-            Save profile
+            {savingProfile ? "Saving..." : "Save profile"}
           </Button>
         </form>
       </SettingsSection>
@@ -337,102 +322,28 @@ export default function SettingsPage() {
       {/* 3. Quick Add Presets */}
       <QuickAddPresetsManager />
 
-      {/* 4. Data Backup & Management */}
       <SettingsSection
-        title="Data backup & management"
-        description="Export, import, or reset your local financial data."
+        title="Notifications"
+        description="Manage in-app notification read state."
       >
-        <div className="space-y-5">
-          <div className="flex flex-wrap gap-3">
-            <Button variant="outline" onClick={handleExportData} className="gap-1.5">
-              <Icon name="download" className="size-4" />
-              Export JSON
-            </Button>
-
-            <Button variant="outline" onClick={() => fileInputRef.current?.click()} className="gap-1.5">
-              <Icon name="upload" className="size-4" />
-              Import backup
-            </Button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".json"
-              onChange={handleImportFile}
-              className="hidden"
-            />
-
-            <Button
-              variant="dash"
-              onClick={() => {
-                loadDemo()
-                toast.success("Demo loaded — check the bell for new alerts")
-              }}
-              className="gap-1.5"
-            >
-              <Icon name="sparkles" className="size-4" />
-              Load demo data
-            </Button>
-
-            <Button
-              variant="outline"
-              onClick={() => {
-                resetNotificationInbox()
-                toast.success("Notifications reset — bell badge refreshed")
-              }}
-              className="gap-1.5"
-            >
-              <Icon name="bell" className="size-4" />
-              Reset notifications
-            </Button>
-          </div>
-
-          <div className={cn(dashCard, "border border-destructive/20 bg-(--dash-danger-soft)/40 p-4 sm:p-5")}>
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-              <div className="space-y-1">
-                <p className="flex items-center gap-2 text-sm font-semibold text-destructive">
-                  <Icon name="triangle-alert" className="size-4" />
-                  Danger zone
-                </p>
-                <p className={dashCaption}>
-                  Permanently clear all transactions, categories, budgets, and loan records.
-                </p>
-              </div>
-              <Button variant="destructive" size="sm" onClick={() => setResetConfirmOpen(true)} className="gap-1.5 shrink-0">
-                <Icon name="trash-2" className="size-4" />
-                Reset all data
-              </Button>
-            </div>
-          </div>
-        </div>
+        <Button
+          variant="outline"
+          onClick={() => {
+            void (async () => {
+              try {
+                await resetNotificationInbox()
+                toast.success("Notifications reset")
+              } catch (error) {
+                toast.error(error instanceof Error ? error.message : "Could not reset notifications.")
+              }
+            })()
+          }}
+          className="gap-1.5"
+        >
+          <Icon name="bell" className="size-4" />
+          Reset notification badges
+        </Button>
       </SettingsSection>
-
-      <Dialog open={resetConfirmOpen} onOpenChange={setResetConfirmOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle className="text-destructive">Reset all data?</DialogTitle>
-            <DialogDescription>
-              This will delete all local transactions, budgets, categories, and loan records. This cannot be undone
-              unless you have an exported backup.
-            </DialogDescription>
-          </DialogHeader>
-
-          <DialogFooter className="pt-2">
-            <Button variant="outline" onClick={() => setResetConfirmOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={() => {
-                resetAll()
-                setResetConfirmOpen(false)
-                toast.success("All data has been reset.")
-              }}
-            >
-              Yes, reset everything
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </DashPage>
   )
 }

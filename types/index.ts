@@ -69,6 +69,10 @@ export interface QuickAddPreset {
 
 export type Budgets = Record<string, number>
 
+export interface BudgetIds {
+  [categoryId: string]: string
+}
+
 export interface AppData {
   version: number
   settings: Settings
@@ -76,6 +80,8 @@ export interface AppData {
   transactions: Transaction[]
   loans: Loan[]
   budgets: Budgets
+  budgetIds: BudgetIds
+  goals: Goal[]
   quickAddPresets: QuickAddPreset[]
 }
 

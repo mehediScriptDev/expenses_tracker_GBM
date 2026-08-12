@@ -17,6 +17,7 @@ import { MAIN_NAV, MOBILE_NAV } from "@/config/navigation"
 import { MobileSidebar } from "@/dashboard/layout/mobile-sidebar"
 import { NotificationBell } from "@/dashboard/layout/notification-bell"
 import { DashboardScrollReset } from "@/dashboard/layout/dashboard-scroll-reset"
+import { DashboardProvider } from "@/lib/hooks/dashboard-context"
 import { headerActionClass } from "@/dashboard/layout/header-action-button"
 import { BrandSpinner } from "@/app/loading"
 
@@ -42,6 +43,7 @@ function Brand() {
         width={180}
         height={48}
         className="h-11 w-auto object-contain"
+        style={{ width: "auto" }}
         priority
       />
     </Link>
@@ -91,7 +93,7 @@ function UserMenu() {
                 type="button"
                 onClick={() => {
                   setOpen(false)
-                  logout()
+                  void logout()
                   router.push("/")
                 }}
                 className="block w-full rounded-md px-3 py-2 text-left text-sm sm:text-base font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors cursor-pointer"
@@ -197,7 +199,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </header>
 
           <main className="w-full px-3 pb-[calc(5.5rem+env(safe-area-inset-bottom))] pt-4 sm:px-6 sm:pt-6 lg:px-10 lg:pb-10">
-            {hydrated ? children : <LoadingScreen />}
+            {hydrated ? <DashboardProvider>{children}</DashboardProvider> : <LoadingScreen />}
           </main>
         </div>
 

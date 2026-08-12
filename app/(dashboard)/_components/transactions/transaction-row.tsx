@@ -7,6 +7,7 @@ import { formatMoney, formatTime, relativeDay } from "@/lib/format"
 import { Icon } from "@/lib/icon"
 import { cn } from "@/lib/utils"
 import { PAYMENT_METHODS } from "@/lib/constants"
+import { toast } from "sonner"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -30,6 +31,24 @@ export function TransactionRow({
   const isIncome = tx.type === "income"
   const pm = PAYMENT_METHODS.find((p) => p.value === tx.paymentMethod)
   const accent = cat?.color ?? "var(--muted-foreground)"
+
+  const handleDuplicate = async () => {
+    try {
+      await duplicateTransaction(tx.id)
+      toast.success("Transaction duplicated")
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not duplicate transaction.")
+    }
+  }
+
+  const handleDelete = async () => {
+    try {
+      await deleteTransaction(tx.id)
+      toast.success("Transaction deleted")
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not delete transaction.")
+    }
+  }
 
   const meta = [
     cat?.name,
@@ -59,9 +78,7 @@ export function TransactionRow({
                 <Icon name="repeat" className="ml-1.5 inline size-3 text-slate-400" aria-hidden />
               ) : null}
             </p>
-            {tx.merchant ? (
-              <p className="truncate text-xs font-medium text-slate-500 dark:text-slate-400">{tx.merchant}</p>
-            ) : meta.length > 0 ? (
+            {meta.length > 0 ? (
               <p className="truncate text-xs font-medium text-slate-500 dark:text-slate-400">{meta.join(" · ")}</p>
             ) : null}
           </div>
@@ -99,12 +116,12 @@ export function TransactionRow({
               Edit
             </DropdownMenuItem>
           ) : null}
-          <DropdownMenuItem onClick={() => duplicateTransaction(tx.id)}>
+          <DropdownMenuItem onClick={() => void handleDuplicate()}>
             <Icon name="copy" className="size-4" />
             Duplicate
           </DropdownMenuItem>
           <DropdownMenuSeparator />
-          <DropdownMenuItem variant="destructive" onClick={() => deleteTransaction(tx.id)}>
+          <DropdownMenuItem variant="destructive" onClick={() => void handleDelete()}>
             <Icon name="trash-2" className="size-4" />
             Delete
           </DropdownMenuItem>
