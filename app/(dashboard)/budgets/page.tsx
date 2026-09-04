@@ -98,6 +98,20 @@ export default function BudgetsPage() {
     return data.categories.filter((c) => c.kind === "expense" && !budgetedIds.has(c.id))
   }, [data.categories, data.budgets])
 
+  React.useEffect(() => {
+    if (unbudgetedCategories.length > 0 && (!addCategoryId || !unbudgetedCategories.some((c) => c.id === addCategoryId))) {
+      setAddCategoryId(unbudgetedCategories[0].id)
+    }
+  }, [unbudgetedCategories, addCategoryId])
+
+  const handleOpenAdd = () => {
+    if (unbudgetedCategories.length > 0) {
+      setAddCategoryId(unbudgetedCategories[0].id)
+      setAddBudgetInput("")
+      setIsAddOpen(true)
+    }
+  }
+
   const handleSaveBudget = async (catId: string) => {
     const val = parseFloat(budgetInput)
     if (isNaN(val) || val < 0) return
@@ -194,7 +208,7 @@ export default function BudgetsPage() {
 
           {unbudgetedCategories.length > 0 ? (
             <Button
-              onClick={() => setIsAddOpen(true)}
+              onClick={handleOpenAdd}
               className="h-10 px-5 gap-1.5 shadow-2xs shrink-0 font-semibold"
             >
               <Icon name="plus" className="size-4" />
@@ -237,7 +251,7 @@ export default function BudgetsPage() {
           message="Assign a monthly cap to any expense category and track progress in real time."
           action={
             unbudgetedCategories.length > 0 ? (
-              <Button variant="dash" onClick={() => setIsAddOpen(true)}>
+              <Button variant="dash" onClick={handleOpenAdd}>
                 Set your first budget
               </Button>
             ) : null
@@ -560,7 +574,7 @@ export default function BudgetsPage() {
         onOpenChange={(open) => {
           setIsAddOpen(open)
           if (open && unbudgetedCategories.length > 0) {
-            setAddCategoryId(unbudgetedCategories[0].id)
+            setAddCategoryId((prev) => prev || unbudgetedCategories[0].id)
             setAddBudgetInput("")
           }
         }}
@@ -575,14 +589,15 @@ export default function BudgetsPage() {
             onSubmit={(e) => {
               e.preventDefault()
               void (async () => {
+                const targetCatId = addCategoryId || unbudgetedCategories[0]?.id
                 const val = parseFloat(addBudgetInput)
-                if (!addCategoryId || isNaN(val) || val <= 0) {
+                if (!targetCatId || isNaN(val) || val <= 0) {
                   toast.error("Enter a valid monthly limit.")
                   return
                 }
 
                 try {
-                  await setBudget(addCategoryId, val)
+                  await setBudget(targetCatId, val)
                   reload()
                   toast.success("Budget saved")
                   setIsAddOpen(false)
@@ -596,7 +611,7 @@ export default function BudgetsPage() {
             <div className="space-y-1.5">
               <label className="dash-label">Category</label>
               <select
-                value={addCategoryId}
+                value={addCategoryId || unbudgetedCategories[0]?.id || ""}
                 onChange={(e) => setAddCategoryId(e.target.value)}
                 className="dash-input w-full px-3 text-sm"
               >
