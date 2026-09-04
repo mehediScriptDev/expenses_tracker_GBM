@@ -110,10 +110,10 @@ npm install
 Create a `.env.local` file in the root directory:
 ```env
 # Backend API URL (use http://localhost:5000 if running backend locally)
-NEXT_PUBLIC_API_URL=https://expensestrackergbmapi-production.up.railway.app
+NEXT_PUBLIC_API_URL=
 
 # Google OAuth 2.0 Web Client ID
-NEXT_PUBLIC_GOOGLE_CLIENT_ID=your-google-client-id.apps.googleusercontent.com
+NEXT_PUBLIC_GOOGLE_CLIENT_ID=
 ```
 
 ### 4. Run the development server
